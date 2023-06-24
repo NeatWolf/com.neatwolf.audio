@@ -1,6 +1,6 @@
 {
-    "name": "com.neatwolf.injection.runtime",
-    "rootNamespace": "NeatWolf.Injection",
+    "name": "com.neatwolf.audio.runtime",
+    "rootNamespace": "NeatWolf.Audio",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
