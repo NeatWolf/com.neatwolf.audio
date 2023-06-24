@@ -1,6 +1,6 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Pool;
 
 namespace NeatWolf.Audio
 {
@@ -32,8 +32,21 @@ namespace NeatWolf.Audio
             _audioSource.volume = clipSettings.Volume;
             _audioSource.panStereo = clipSettings.PanStereo;
             _audioSource.spatialBlend = audioObject.SpatialBlend;
+            _audioSource.rolloffMode = audioObject.RolloffMode;
             _audioSource.outputAudioMixerGroup = audioObject.AudioChannel.ResolveMixerGroup();
 
+            if (_audioSource.clip == null)
+            {
+                Debug.LogError("Audio clip is null in AudioSourcePlayer.");
+                return;
+            }
+        
+            if (_audioSource.outputAudioMixerGroup == null)
+            {
+                Debug.LogError("AudioMixerGroup is null in AudioSourcePlayer.");
+                return;
+            }
+            
             _audioSource.Play();
 
             StartCoroutine(StopAtEndPositionCoroutine(clipSettings.EndPosition));
@@ -43,7 +56,7 @@ namespace NeatWolf.Audio
         {
             yield return new WaitForSeconds(endPosition);
             _audioSource.Stop();
-            UnityEngine.Pool.GenericPool<AudioPlayer>.Release(this);
+            GenericPool<AudioPlayer>.Release(this);
         }
     }
 

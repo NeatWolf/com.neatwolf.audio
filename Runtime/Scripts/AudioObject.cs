@@ -1,7 +1,8 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace NeatWolf.Audio
 {
@@ -9,7 +10,7 @@ namespace NeatWolf.Audio
 /// This class represents a setting for an AudioClip, 
 /// holding values for pitch, volume, pan and starting/ending positions.
 /// </summary>
-[System.Serializable]
+[Serializable]
 public class ClipSettings
 {
     [SerializeField]
@@ -111,23 +112,41 @@ public class AudioObject : ScriptableObject
     public AudioClip GetClipSettings(out ClipSettings clipSettings)
     {
         clipSettings = null;
+        ClipSettings chosenClip = null;
 
         switch (playMode)
         {
             case PlayMode.Random:
-                clipSettings = GetRandomClip();
+                chosenClip = GetRandomClip();
                 break;
             case PlayMode.RandomDifferent:
-                clipSettings = GetRandomDifferentClip();
+                chosenClip = GetRandomDifferentClip();
                 break;
         }
+        
+        if (chosenClip == null )
+        {
+            Debug.LogError("Chosen audioclip was null in AudioObject " + this.name);
+            clipSettings = null;
+            return null;
+        }
+        
+        if (chosenClip.AudioClip == null)
+        {
+            Debug.LogError("Audio clip is null in AudioObject " + this.name);
+            clipSettings = null;
+            return null;
+        }
+
+        clipSettings = chosenClip;
+        return chosenClip.AudioClip;
 
         return clipSettings.AudioClip;
     }
 
     private ClipSettings GetRandomClip()
     {
-        int randomIndex = UnityEngine.Random.Range(0, audioClipsSettings.Count);
+        int randomIndex = Random.Range(0, audioClipsSettings.Count);
         return audioClipsSettings[randomIndex];
     }
 
@@ -141,7 +160,7 @@ public class AudioObject : ScriptableObject
             nonHistoryClips = audioClipsSettings;
         }
 
-        int randomIndex = UnityEngine.Random.Range(0, nonHistoryClips.Count);
+        int randomIndex = Random.Range(0, nonHistoryClips.Count);
         ClipSettings chosenClip = nonHistoryClips[randomIndex];
         audioClipsHistory.Add(chosenClip);
         return chosenClip;
@@ -149,6 +168,12 @@ public class AudioObject : ScriptableObject
 
     public void PlayAtPoint(Vector3 position)
     {
+        if (AudioManager.Instance == null)
+        {
+            Debug.LogError("AudioManager instance is null. Make sure AudioManager is present in the scene.");
+            return;
+        }
+        
         AudioManager.Instance.PlaySoundAtPosition(this, position);
     }
 }

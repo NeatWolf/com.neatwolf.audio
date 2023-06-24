@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -24,6 +22,10 @@ namespace NeatWolf.Audio
             if (_resolvedMixerGroup == null)
             {
                 _resolvedMixerGroup = Resources.Load<AudioMixerGroup>("Audio/Mixers/" + this.name);
+                if (_resolvedMixerGroup == null)
+                {
+                    Debug.LogError("Failed to load AudioMixerGroup for AudioChannel " + this.name);
+                }
             }
 
             return _resolvedMixerGroup;

@@ -1,7 +1,5 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
+using UnityEngine.Pool;
 
 namespace NeatWolf.Audio
 {
@@ -10,20 +8,29 @@ namespace NeatWolf.Audio
     /// </summary>
     public class AudioManager : MonoBehaviour
     {
+        [SerializeField] private GameObject audioPlayerPrefab; // Assign this in the inspector
+        
         public static AudioManager Instance { get; private set; }
-        [FormerlySerializedAs("audioSourcePrefab")] public AudioPlayer audioPrefab;
+
+        private ObjectPool<GameObject> _audioPlayerPool;
 
         private void Awake()
         {
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
             }
             else
             {
+                Debug.LogError("More than one AudioManager instance detected. Only one AudioManager should exist in the scene.");
                 Destroy(gameObject);
+                return;
             }
+            
+            
+            // Initialize the pool
+            _audioPlayerPool = new ObjectPool<GameObject>(() => Instantiate(audioPlayerPrefab));
+
         }
 
         /// <summary>
@@ -33,9 +40,30 @@ namespace NeatWolf.Audio
         /// <param name="position">The position at which to play the sound.</param>
         public void PlaySoundAtPosition(AudioObject audioObject, Vector3 position)
         {
-            AudioPlayer audioPlayer = UnityEngine.Pool.GenericPool<AudioPlayer>.Get();
-            audioPlayer.transform.SetParent(transform);
-            audioPlayer.PlayAtPosition(audioObject, position);
+            if (audioObject == null)
+            {
+                Debug.LogError("AudioObject is null in AudioManager's PlaySoundAtPosition.");
+                return;
+            }
+
+            // Fetch an AudioSourcePlayer from the pool
+            GameObject audioPlayerGameObject = _audioPlayerPool.Get();
+
+            if (audioPlayerGameObject == null)
+            {
+                Debug.LogError("Failed to get AudioSourcePlayer from pool in AudioManager.");
+                return;
+            }
+            
+            AudioPlayer audioSourcePlayer = audioPlayerGameObject.GetComponent<AudioPlayer>();
+            if (audioSourcePlayer == null)
+            {
+                Debug.LogError("Failed to get AudioSourcePlayer from pool in AudioManager.");
+                return;
+            }
+
+            audioSourcePlayer.transform.SetParent(transform);
+            audioSourcePlayer.PlayAtPosition(audioObject, position);
         }
     }
 }

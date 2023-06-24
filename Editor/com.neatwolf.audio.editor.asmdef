@@ -1,0 +1,16 @@
+{
+    "name": "com.neatwolf.audio.editor",
+    "rootNamespace": "NeatWolf.Audio.Editor",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [
+        "Editor"
+    ],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
