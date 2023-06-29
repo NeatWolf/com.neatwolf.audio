@@ -28,6 +28,8 @@ namespace NeatWolf.Audio
             transform.position = position;
             ClipSettings clipSettings;
             _audioSource.clip = audioObject.GetClipSettings(out clipSettings);
+            clipSettings.Volume *= Random.Range(audioObject.VolumeRange.x, audioObject.VolumeRange.y);
+            clipSettings.Pitch *= Random.Range(audioObject.PitchRange.x, audioObject.PitchRange.y);
             _audioSource.pitch = clipSettings.Pitch;
             _audioSource.volume = clipSettings.Volume;
             _audioSource.panStereo = clipSettings.PanStereo;
@@ -58,6 +60,8 @@ namespace NeatWolf.Audio
             _audioSource.Stop();
             GenericPool<AudioPlayer>.Release(this);
         }
+        
+
     }
 
 }
