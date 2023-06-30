@@ -34,7 +34,11 @@ namespace NeatWolf.Audio
         /// <summary>
         /// The AudioClip to be played.
         /// </summary>
-        public AudioClip AudioClip => audioClip;
+        public AudioClip AudioClip
+        {
+            get => audioClip;
+            set => audioClip = value;
+        }
 
         /// <summary>
         /// The pitch of the AudioClip.
@@ -57,17 +61,29 @@ namespace NeatWolf.Audio
         /// <summary>
         /// The pan position of the AudioClip.
         /// </summary>
-        public float PanStereo => panStereo;
+        public float PanStereo
+        {
+            get => panStereo;
+            set => panStereo = value;
+        }
 
         /// <summary>
         /// The starting position in the AudioClip.
         /// </summary>
-        public float StartPosition => startPosition;
+        public float StartPosition
+        {
+            get => startPosition;
+            set => startPosition = value;
+        }
 
         /// <summary>
         /// The ending position in the AudioClip.
         /// </summary>
-        public float EndPosition => endPosition;
+        public float EndPosition
+        {
+            get => endPosition;
+            set => endPosition = value;
+        }
     }
 
     /// <summary>
@@ -85,23 +101,46 @@ namespace NeatWolf.Audio
     [CreateAssetMenu(menuName = "Audio/Audio Object")]
     public class AudioObject : ScriptableObject
     {
+        // List of settings for each clip this AudioObject will play
         [SerializeField]
         private List<ClipSettings> audioClipsSettings;
+
+        // The channel that will be used to play this audio
         [SerializeField]
         private AudioChannel audioChannel;
 
+        // Volume that will be applied to the chosen clip (multiplier)
         [SerializeField, Tooltip("Range of possible volume multipliers")]
         private Vector2 volumeRange = new Vector2(1f, 1f);
 
+        // Pitch that will be applied to the chosen clip (multiplier)
         [SerializeField, Tooltip("Range of possible pitch multipliers")]
         private Vector2 pitchRange = new Vector2(1f, 1f);
+
+        // Defines how the audio will be attenuated the further from the listener it gets
         [SerializeField]
         private AudioRolloffMode rolloffMode;
+
+        // 0 means the audio is completely 2D, 1 means it's completely 3D
         [SerializeField]
         private float spatialBlend;
+
+        // The strategy to pick clips from the list
         [SerializeField]
         private PlayMode playMode;
-        private List<ClipSettings> audioClipsHistory = new List<ClipSettings>();
+
+        // Clips that have already been chosen, only used with PlayMode.RandomDifferent
+        private List<ClipSettings> _audioClipsHistory = new List<ClipSettings>();
+        
+        [Space]
+        // Configurator that sets up the AudioSource for previewing.
+        [SerializeField, Tooltip("Configurator that sets up the AudioSource for previewing.")]
+        private AudioSourceConfigurator _configurator;
+
+        private void OnValidate()
+        {
+            ValidateConfigurator();
+        }
 
         /// <summary>
         /// The list of settings for AudioClips in this AudioObject.
@@ -135,14 +174,14 @@ namespace NeatWolf.Audio
             set => pitchRange = value;
         }
 
+        public AudioSourceConfigurator Configurator => _configurator;
+
         /// <summary>
         /// Returns a ClipSettings following the playMode rules.
         /// </summary>
-        /// <param name="clipSettings">The ClipSettings to play.</param>
         /// <returns>ClipSettings to play.</returns>
-        public AudioClip GetClipSettings(out ClipSettings clipSettings)
+        public ClipSettings GetClipSettings()
         {
-            clipSettings = null;
             ClipSettings chosenClip = null;
 
             switch (playMode)
@@ -154,23 +193,20 @@ namespace NeatWolf.Audio
                     chosenClip = GetRandomDifferentClip();
                     break;
             }
-        
+    
             if (chosenClip == null )
             {
                 Debug.LogError("Chosen audioclip was null in AudioObject " + this.name);
-                clipSettings = null;
                 return null;
             }
-        
+    
             if (chosenClip.AudioClip == null)
             {
                 Debug.LogError("Audio clip is null in AudioObject " + this.name);
-                clipSettings = null;
                 return null;
             }
-            
-            clipSettings = chosenClip;
-            return clipSettings.AudioClip;
+        
+            return chosenClip;
         }
 
         private ClipSettings GetRandomClip()
@@ -181,17 +217,17 @@ namespace NeatWolf.Audio
 
         private ClipSettings GetRandomDifferentClip()
         {
-            List<ClipSettings> nonHistoryClips = audioClipsSettings.Except(audioClipsHistory).ToList();
+            List<ClipSettings> nonHistoryClips = audioClipsSettings.Except(_audioClipsHistory).ToList();
             if (nonHistoryClips.Count == 0)
             {
                 // All clips have been played, clear the history.
-                audioClipsHistory.Clear();
+                _audioClipsHistory.Clear();
                 nonHistoryClips = audioClipsSettings;
             }
 
             int randomIndex = Random.Range(0, nonHistoryClips.Count);
             ClipSettings chosenClip = nonHistoryClips[randomIndex];
-            audioClipsHistory.Add(chosenClip);
+            _audioClipsHistory.Add(chosenClip);
             return chosenClip;
         }
 
@@ -204,6 +240,27 @@ namespace NeatWolf.Audio
             }
         
             AudioManager.Instance.PlaySoundAtPosition(this, position);
+        }
+        
+        public void ValidateConfigurator()
+        {
+            if (_configurator == null)
+            {
+                string path = "Assets/Settings/DefaultAudioSourceConfigurator.asset";
+#if UNITY_EDITOR
+                _configurator = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioSourceConfigurator>(path);
+#endif
+
+                if (_configurator == null)
+                {
+                    Debug.LogWarning($"Failed to load AudioSourceConfigurator from path: {path}. Please ensure the asset exists at this location.");
+                }
+                else
+                {
+                    Debug.LogWarning("AudioSourceConfigurator was null and has been set to the default.");
+                    UnityEditor.EditorUtility.SetDirty(this);
+                }
+            }
         }
     }
 }

@@ -7,12 +7,16 @@ namespace NeatWolf.Audio
 {
     /// <summary>
     /// Custom drawer for ClipSettings class.
+    /// Each ClipSettings will have its own preview button in the inspector.
     /// </summary>
     [CustomPropertyDrawer(typeof(ClipSettings))]
     public class ClipSettingsDrawer : PropertyDrawer
     {
+        private AudioSource _previewSource;
+        private EditorCoroutine _previewCoroutine;
+
         /// <summary>
-        /// GUI for property.
+        /// GUI for ClipSettings property with an additional "Play Preview" button.
         /// </summary>
         /// <param name="position">Rectangle on the screen to use for the property GUI.</param>
         /// <param name="property">The SerializedProperty to make the custom GUI for.</param>
@@ -21,68 +25,104 @@ namespace NeatWolf.Audio
         {
             EditorGUI.BeginProperty(position, label, property);
 
-            Debug.Log(property.serializedObject.targetObject);
-            
-            // Fetch the properties
-            SerializedProperty clipProp = property.FindPropertyRelative("audioClip");
-            SerializedProperty volumeProp = property.FindPropertyRelative("volume");
-            SerializedProperty pitchProp = property.FindPropertyRelative("pitch");
-            SerializedProperty panProp = property.FindPropertyRelative("panStereo");
-            SerializedProperty startProp = property.FindPropertyRelative("startPosition");
-            SerializedProperty endProp = property.FindPropertyRelative("endPosition");
+            position.height = EditorGUI.GetPropertyHeight(property);
+            EditorGUI.PropertyField(position, property, label, true);
 
-            // Set up the layout
-            Rect singleFieldRect = new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight);
+            position.y += position.height;
+            position.height = EditorGUIUtility.singleLineHeight;
 
-            // Create fields for properties
-            EditorGUI.PropertyField(singleFieldRect, clipProp);
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
-
-            EditorGUI.Slider(singleFieldRect, volumeProp, 0f, 2f, new GUIContent("Volume"));
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
-
-            EditorGUI.Slider(singleFieldRect, pitchProp, -8f, 8f, new GUIContent("Pitch"));
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
-
-            EditorGUI.Slider(singleFieldRect, panProp, -1f, 1f, new GUIContent("Pan"));
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
-
-            EditorGUI.PropertyField(singleFieldRect, startProp, new GUIContent("Start Position"));
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
-
-            // If end position is uninitialized (0), and there's a valid AudioClip, set it to clip's length
-            if (Mathf.Approximately(endProp.floatValue, 0) && clipProp.objectReferenceValue != null)
+            if (property.isExpanded
+                && GUI.Button(position, "Play Preview"))
             {
-                AudioClip clip = (AudioClip)clipProp.objectReferenceValue;
-                endProp.floatValue = clip.length;
-            }
+                AudioObject audioObject = (AudioObject)property.serializedObject.targetObject;
+                
+                // Validate the configurator
+                audioObject.ValidateConfigurator();
+                
+                ClipSettings clipSettings = GetClipSettingsFromSerializedProperty(property);
 
-            EditorGUI.PropertyField(singleFieldRect, endProp, new GUIContent("End Position"));
-            singleFieldRect.y += EditorGUIUtility.singleLineHeight;
+                // Obtain the configurator from the parent AudioObject
+                AudioSourceConfigurator configurator = audioObject.Configurator;
+
+                if (_previewSource == null)
+                {
+                    _previewSource = EditorUtility.CreateGameObjectWithHideFlags("Audio preview", HideFlags.HideAndDontSave, typeof(AudioSource)).GetComponent<AudioSource>();
+                }
+
+                if (_previewCoroutine != null)
+                {
+                    EditorCoroutineUtility.StopCoroutine(_previewCoroutine);
+                    _previewCoroutine = null;
+                }
+
+                // Use the configurator from the parent AudioObject
+                var audioSourceSettings = configurator.Configure(_previewSource, audioObject, clipSettings);
+                _previewSource.clip = audioSourceSettings.AudioClip;
+                _previewSource.Play();
+                
+                _previewCoroutine = EditorCoroutineUtility.StartCoroutineOwnerless(StopPreviewAfterSeconds(_previewSource, audioSourceSettings.Duration));
+            }
 
             EditorGUI.EndProperty();
         }
+        
+        /// <summary>
+        /// Method to extract ClipSettings from SerializedProperty.
+        /// </summary>
+        /// <param name="property">The SerializedProperty object representing ClipSettings in the inspector.</param>
+        /// <returns>A ClipSettings object.</returns>
+        private ClipSettings GetClipSettingsFromSerializedProperty(SerializedProperty property)
+        {
+            // Create a new ClipSettings instance
+            ClipSettings clipSettings = new ClipSettings();
+    
+            // Assign field values from the SerializedProperty to the new ClipSettings instance
+            clipSettings.AudioClip = property.FindPropertyRelative("audioClip").objectReferenceValue as AudioClip;
+            clipSettings.Volume = property.FindPropertyRelative("volume").floatValue;
+            clipSettings.Pitch = property.FindPropertyRelative("pitch").floatValue;
+            clipSettings.PanStereo = property.FindPropertyRelative("panStereo").floatValue;
+            clipSettings.StartPosition = property.FindPropertyRelative("startPosition").floatValue;
+            clipSettings.EndPosition = property.FindPropertyRelative("endPosition").floatValue;
+
+            return clipSettings;
+        }
 
         /// <summary>
-        /// Plays a preview of the ClipSettings.
+        /// Overridden Unity method to calculate the height of the property.
         /// </summary>
-        /// <param name="previewSource">The AudioSource to use for the preview.</param>
-        /// <param name="clipSettings">The ClipSettings to preview.</param>
-        /// <param name="previewCoroutine">The coroutine for the preview, allowing it to be stopped later.</param>
-        public static void PlayClipSettingsPreview(AudioSource previewSource, ClipSettings clipSettings, out EditorCoroutine previewCoroutine)
+        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
-            AudioClip clip = clipSettings.AudioClip;
-            if (clip == null)
+            if (property.isExpanded)
             {
-                previewCoroutine = null;
-                return;
+                var propertyHeight = EditorGUI.GetPropertyHeight(property, label, true);
+                propertyHeight += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing; // Add space for the Play Preview button
+                return propertyHeight;
+            }
+            else
+            {
+                return EditorGUI.GetPropertyHeight(property, label, false);
+            }
+        }
+
+        /// <summary>
+        /// Unity method that's called when the drawer is disabled.
+        /// </summary>
+        private void OnDisable()
+        {
+            if (_previewCoroutine != null)
+            {
+                EditorCoroutineUtility.StopCoroutine(_previewCoroutine);
+                _previewCoroutine = null;
             }
 
-            var previewDuration = ConfigureAudioSource(previewSource, clipSettings, clip);
-
-            // Start playing the clip and begin the coroutine to stop it after the calculated duration
-            previewSource.Play();
-            previewCoroutine = EditorCoroutineUtility.StartCoroutineOwnerless(StopPreviewAfterSeconds(previewSource, previewDuration));
+            if (_previewSource != null)
+            {
+                if (_previewSource.gameObject != null)
+                {
+                    Object.DestroyImmediate(_previewSource.gameObject);
+                }
+                _previewSource = null;
+            }
         }
 
         /// <summary>
@@ -102,27 +142,6 @@ namespace NeatWolf.Audio
                 }
                 source = null;
             }
-        }
-        
-        private static float ConfigureAudioSource(AudioSource previewSource, ClipSettings clipSettings, AudioClip clip)
-        {
-            previewSource.clip = clip;
-            //previewSource.volume = clipSettings.Volume *
-            //                       Random.Range(audioObject.VolumeRange.x, clipSettings.AudioObject.VolumeRange.y);
-            //previewSource.pitch = Random.Range(clipSettings.AudioObject.PitchRange.x, clipSettings.AudioObject.PitchRange.y);
-            previewSource.volume = clipSettings.Volume;
-            previewSource.pitch = clipSettings.Pitch;
-            previewSource.panStereo = clipSettings.PanStereo;
-
-            // Seek to the correct start position based on the pitch
-            if (clipSettings.Pitch >= 0f)
-                previewSource.time = Mathf.Abs(clipSettings.StartPosition * clipSettings.Pitch);
-            else
-                previewSource.time = Mathf.Abs((clip.length - clipSettings.StartPosition) * clipSettings.Pitch);
-
-            // Calculate the duration of the preview based on the start and end positions and the pitch
-            float previewDuration = Mathf.Abs((clipSettings.EndPosition - clipSettings.StartPosition) / clipSettings.Pitch);
-            return previewDuration;
         }
     }
 }

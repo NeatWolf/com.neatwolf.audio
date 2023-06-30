@@ -9,8 +9,15 @@ namespace NeatWolf.Audio
     /// An AudioSource component must be present on the same gameobject.
     /// Usually this is made into a prefab
     /// </summary>
+    [RequireComponent(typeof(AudioSource))]
     public class AudioPlayer : MonoBehaviour
     {
+        /// <summary>
+        /// Configurator that sets up the AudioSource with data from an AudioObject.
+        /// </summary>
+        [SerializeField, Tooltip("Configurator that sets up the AudioSource with data from an AudioObject.")]
+        private AudioSourceConfigurator _configurator;
+
         private AudioSource _audioSource;
 
         private void Awake()
@@ -18,40 +25,32 @@ namespace NeatWolf.Audio
             _audioSource = GetComponent<AudioSource>();
         }
 
-        /// <summary>
-        /// Play an AudioObject at a given position.
-        /// </summary>
-        /// <param name="audioObject">The AudioObject to be played.</param>
-        /// <param name="position">The position at which to play the AudioObject.</param>
-        public void PlayAtPosition(AudioObject audioObject, Vector3 position)
+        public void PlayAtPosition(AudioObject audioObject, Vector3 position, ClipSettings clipSettings = null)
         {
+            // Position the AudioSource at the desired position
             transform.position = position;
-            ClipSettings clipSettings;
-            _audioSource.clip = audioObject.GetClipSettings(out clipSettings);
-            clipSettings.Volume *= Random.Range(audioObject.VolumeRange.x, audioObject.VolumeRange.y);
-            clipSettings.Pitch *= Random.Range(audioObject.PitchRange.x, audioObject.PitchRange.y);
-            _audioSource.pitch = clipSettings.Pitch;
-            _audioSource.volume = clipSettings.Volume;
-            _audioSource.panStereo = clipSettings.PanStereo;
-            _audioSource.spatialBlend = audioObject.SpatialBlend;
-            _audioSource.rolloffMode = audioObject.RolloffMode;
-            _audioSource.outputAudioMixerGroup = audioObject.AudioChannel.ResolveMixerGroup();
 
-            if (_audioSource.clip == null)
+            // Configure the AudioSource and get the settings
+            AudioSourceSettings settings = _configurator.Configure(_audioSource, audioObject, clipSettings);
+
+            // Error checking
+            if (settings.AudioClip == null)
             {
                 Debug.LogError("Audio clip is null in AudioSourcePlayer.");
                 return;
             }
-        
+
             if (_audioSource.outputAudioMixerGroup == null)
             {
                 Debug.LogError("AudioMixerGroup is null in AudioSourcePlayer.");
                 return;
             }
-            
+
+            // Play the AudioSource
             _audioSource.Play();
 
-            StartCoroutine(StopAtEndPositionCoroutine(clipSettings.EndPosition));
+            // Stop playback at the end of the clip
+            StartCoroutine(StopAtEndPositionCoroutine(settings.Duration));
         }
 
         private IEnumerator StopAtEndPositionCoroutine(float endPosition)
@@ -60,8 +59,5 @@ namespace NeatWolf.Audio
             _audioSource.Stop();
             GenericPool<AudioPlayer>.Release(this);
         }
-        
-
     }
-
 }
