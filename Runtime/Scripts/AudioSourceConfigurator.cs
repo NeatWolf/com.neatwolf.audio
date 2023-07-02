@@ -50,6 +50,8 @@ namespace NeatWolf.Audio
             // Assign PanStereo to AudioSource
             source.panStereo = clipSettings.PanStereo;
 
+            source.playOnAwake = false;
+
             // Calculate and assign start time to AudioSource
             float time;
             if (source.pitch >= 0f)

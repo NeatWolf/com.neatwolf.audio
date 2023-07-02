@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NeatWolf.Attributes;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
 
 namespace NeatWolf.Audio
@@ -90,8 +92,11 @@ namespace NeatWolf.Audio
     /// <summary>
     /// This enum represents different play modes for an AudioObject.
     /// </summary>
-    public enum PlayMode
+    // The strategy to pick clips from the list
+    public enum ClipPickStrategy
     {
+        First,
+        Sequential,
         Random,
         RandomDifferent
     }
@@ -129,7 +134,9 @@ namespace NeatWolf.Audio
 
         // The strategy to pick clips from the list
         [SerializeField]
-        private PlayMode playMode;
+        private ClipPickStrategy clipPickStrategy;
+
+        private int _clipIndex = 0;
 
         // Clips that have already been chosen, only used with PlayMode.RandomDifferent
         private List<ClipSettings> _audioClipsHistory = new List<ClipSettings>();
@@ -138,6 +145,25 @@ namespace NeatWolf.Audio
         // Configurator that sets up the AudioSource for previewing.
         [SerializeField, Tooltip("Configurator that sets up the AudioSource for previewing.")]
         private AudioSourceConfigurator _configurator;
+
+        [SerializeField] private bool _looping;
+        [SerializeField] private bool _parentToTransform;
+        [FormerlySerializedAs("repositionToTransform")] [FormerlySerializedAs("_followTransform")] [SerializeField] private bool repositionToTarget;
+        
+        [SerializeField, Tooltip("The range for the interval between loops.")]
+        private Vector2 intervalRange = new Vector2(0f, 0f);
+
+
+        public Vector2 IntervalRange
+        {
+            get => intervalRange;
+            set => intervalRange = value;
+        }
+
+        public float GetInterval()
+        {
+            return Random.Range(intervalRange.x, intervalRange.y);
+        }
 
         private void OnValidate()
         {
@@ -178,6 +204,21 @@ namespace NeatWolf.Audio
 
         public AudioSourceConfigurator Configurator => _configurator;
 
+        public bool Looping
+        {
+            get { return _looping; }
+        }
+        
+        public bool RepositionToTarget
+        {
+            get { return repositionToTarget; }
+        }
+
+        public bool ParentToTransform
+        {
+            get { return _parentToTransform; }
+        }
+
         /// <summary>
         /// Returns a ClipSettings following the playMode rules.
         /// </summary>
@@ -186,12 +227,18 @@ namespace NeatWolf.Audio
         {
             ClipSettings chosenClip = null;
 
-            switch (playMode)
+            switch (clipPickStrategy)
             {
-                case PlayMode.Random:
+                case ClipPickStrategy.First:
+                    chosenClip = GetFirstClip();
+                    break;
+                case ClipPickStrategy.Sequential:
+                    chosenClip = GetSequentialClip();
+                    break;
+                case ClipPickStrategy.Random:
                     chosenClip = GetRandomClip();
                     break;
-                case PlayMode.RandomDifferent:
+                case ClipPickStrategy.RandomDifferent:
                     chosenClip = GetRandomDifferentClip();
                     break;
             }
@@ -208,6 +255,18 @@ namespace NeatWolf.Audio
                 return null;
             }
         
+            return chosenClip;
+        }
+        
+        private ClipSettings GetFirstClip()
+        {
+            return audioClipsSettings[0];
+        }
+
+        private ClipSettings GetSequentialClip()
+        {
+            ClipSettings chosenClip = audioClipsSettings[_clipIndex];
+            _clipIndex = (_clipIndex + 1) % audioClipsSettings.Count;
             return chosenClip;
         }
 
@@ -233,7 +292,7 @@ namespace NeatWolf.Audio
             return chosenClip;
         }
 
-        public void PlayAtPoint(Vector3 position)
+        /*public void PlayAtPoint(Vector3 position)
         {
             if (AudioManager.Instance == null)
             {
@@ -242,7 +301,7 @@ namespace NeatWolf.Audio
             }
         
             AudioManager.Instance.PlaySoundAtPosition(this, position);
-        }
+        }*/
         
         public void ValidateConfigurator()
         {
@@ -250,7 +309,7 @@ namespace NeatWolf.Audio
             {
                 string path = "Assets/Settings/DefaultAudioSourceConfigurator.asset";
 #if UNITY_EDITOR
-                _configurator = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioSourceConfigurator>(path);
+                _configurator = AssetDatabase.LoadAssetAtPath<AudioSourceConfigurator>(path);
 #endif
 
                 if (_configurator == null)
@@ -260,7 +319,7 @@ namespace NeatWolf.Audio
                 else
                 {
                     Debug.LogWarning("AudioSourceConfigurator was null and has been set to the default.");
-                    UnityEditor.EditorUtility.SetDirty(this);
+                    EditorUtility.SetDirty(this);
                 }
             }
         }
