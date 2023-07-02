@@ -1,7 +1,7 @@
 {
     "name": "com.neatwolf.audio.runtime",
     "rootNamespace": "NeatWolf.Audio",
-    "references": [],
+    "references": ["GUID:03c0a49be082f584799c74056211fa4e"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

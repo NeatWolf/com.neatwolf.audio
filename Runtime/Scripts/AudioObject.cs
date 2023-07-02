@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NeatWolf.Attributes;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -107,6 +108,7 @@ namespace NeatWolf.Audio
 
         // The channel that will be used to play this audio
         [SerializeField]
+        [ScriptableObjectCollection("Assets/Settings/Audio/")]
         private AudioChannel audioChannel;
 
         // Volume that will be applied to the chosen clip (multiplier)
