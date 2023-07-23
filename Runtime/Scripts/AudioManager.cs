@@ -10,32 +10,70 @@ namespace NeatWolf.Audio
     public class AudioManager : MonoBehaviour
     {
         [SerializeField] private GameObject audioPlayerPrefab; // Assign this in the inspector
-        
+
+        private static AudioManager instance;
+        private static bool hasAwoken = false;
+        private static bool hasStarted = false;
+
         /// <summary>
         /// Singleton instance of the AudioManager.
         /// </summary>
-        public static AudioManager Instance { get; private set; }
+        public static AudioManager Instance 
+        { 
+            get
+            {
+                if (instance == null)
+                {
+                    instance = FindObjectOfType<AudioManager>();
+
+                    if (instance == null)
+                    {
+                        Debug.LogError("An instance of AudioManager is needed in the scene, but none was found.");
+                    }
+                    else
+                    {
+                        // Initialize if needed
+                        if (!hasAwoken)
+                        {
+                            instance.Awake();
+                        }
+
+                        if (!hasStarted)
+                        {
+                            instance.Start();
+                        }
+                    }
+                }
+
+                return instance;
+            }
+        }
 
         private ObjectPool<GameObject> _audioPlayerPool;
 
         private void Awake()
         {
-            // Ensure only one instance of AudioManager exists
-            if (Instance == null)
+            // Check for duplicates
+            if (instance != null && instance != this)
             {
-                Instance = this;
-            }
-            else
-            {
-                Debug.LogError("More than one AudioManager instance detected. Only one AudioManager should exist in the scene.");
-                Destroy(gameObject);
+                Debug.LogError("More than one AudioManager instance detected. Destroying duplicate.");
+                Destroy(this.gameObject);
                 return;
             }
+
+            instance = this;
             
             // Initialize the pool
             _audioPlayerPool = new ObjectPool<GameObject>(() => Instantiate(audioPlayerPrefab));
+            hasAwoken = true;
         }
-        
+
+        private void Start()
+        {
+            // Add additional initialization code here if needed
+            hasStarted = true;
+        }
+
         /// <summary>
         /// Play an AudioObject.
         /// If RepositionToTarget is true, it uses the targetTransform's position, otherwise it uses audioPosition. 

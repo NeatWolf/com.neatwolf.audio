@@ -46,6 +46,10 @@ namespace NeatWolf.Audio
             // Calculate and assign Pitch to AudioSource
             float pitch = clipSettings.Pitch * Random.Range(audioObject.PitchRange.x, audioObject.PitchRange.y);
             source.pitch = pitch;
+            
+            // Spatial blend
+            float spatialBlend = audioObject.SpatialBlend;
+            source.spatialBlend = spatialBlend;
 
             // Assign PanStereo to AudioSource
             source.panStereo = clipSettings.PanStereo;

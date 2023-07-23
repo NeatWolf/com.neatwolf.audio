@@ -21,7 +21,6 @@ namespace NeatWolf.Audio
     /// Usually this is made into a prefab
     /// </summary>
     [RequireComponent(typeof(AudioSource))]
-
     public class AudioPlayer : MonoBehaviour
     {
         public AudioPlayerContext Context { get; private set; }
@@ -49,6 +48,9 @@ namespace NeatWolf.Audio
             }
         }
 
+        public bool UseSpatialBlendPlayerMultiplier { get; set; }
+        public float SpatialBlendMultiplier { get; set; }
+
         protected virtual void Awake()
         {
             _audioSource = GetComponent<AudioSource>();
@@ -75,6 +77,9 @@ namespace NeatWolf.Audio
             transform.position = context.Position;
 
             AudioSourceSettings settings = _configurator.Configure(_audioSource, context.AudioObject, context.ClipSettings);
+
+            if (UseSpatialBlendPlayerMultiplier)
+                _audioSource.spatialBlend *= SpatialBlendMultiplier;
 
             if (settings.AudioClip == null || _audioSource.outputAudioMixerGroup == null)
             {
