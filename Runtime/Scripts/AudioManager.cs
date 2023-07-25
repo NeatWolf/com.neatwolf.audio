@@ -24,7 +24,7 @@ namespace NeatWolf.Audio
             {
                 if (instance == null)
                 {
-                    instance = FindObjectOfType<AudioManager>();
+                    instance = FindFirstObjectByType<AudioManager>();
 
                     if (instance == null)
                     {

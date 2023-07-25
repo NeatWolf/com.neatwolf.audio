@@ -33,6 +33,8 @@ namespace NeatWolf.Audio
 
         /// <summary>
         /// Gets the closest point on the audio volume to a given position.
+        /// This method assumes that position is in the local space of the AudioVolume, with the origin at (0,0,0).
+        /// Therefore, this method can be used to compute the closest point on the shape relative to the center of the shape.
         /// </summary>
         /// <param name="position">The position to calculate the closest point from.</param>
         /// <param name="data">The shape data associated with the audio volume.</param>

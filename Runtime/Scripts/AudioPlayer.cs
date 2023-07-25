@@ -71,12 +71,16 @@ namespace NeatWolf.Audio
 
         public virtual void Play(AudioPlayerContext context)
         {
-            context.Position = context.ParentToTarget && context.TargetTransform != null
-                ? context.TargetTransform.position
-                : context.Position;
-            transform.position = context.Position;
+            Context = context;
+            
+            Context.Position = Context.ParentToTarget && Context.TargetTransform != null
+                ? Context.TargetTransform.position
+                : Context.Position;
+            transform.position = Context.Position;
 
-            AudioSourceSettings settings = _configurator.Configure(_audioSource, context.AudioObject, context.ClipSettings);
+
+
+            AudioSourceSettings settings = _configurator.Configure(_audioSource, Context.AudioObject, Context.ClipSettings);
 
             if (UseSpatialBlendPlayerMultiplier)
                 _audioSource.spatialBlend *= SpatialBlendMultiplier;
@@ -96,6 +100,17 @@ namespace NeatWolf.Audio
             StartCoroutine(StopAtEndPositionCoroutine(settings.Duration));
         }
 
+        public virtual void UpdateSpatialBlend(float overrideValue)
+        {
+            //if (UseSpatialBlendPlayerMultiplier)
+            _audioSource.spatialBlend = overrideValue;
+        }
+
+        public virtual void UpdateSpread(float overrideValue)
+        {
+            _audioSource.spread = overrideValue;
+        }
+
         protected virtual IEnumerator StopAtEndPositionCoroutine(float endPosition)
         {
             yield return new WaitForSeconds(endPosition);
@@ -107,16 +122,17 @@ namespace NeatWolf.Audio
 
             if (Context.AudioObject.Looping)
             {
-                float interval = Context.AudioObject.GetInterval();
-                if (interval > 0)
-                {
+                float interval = Mathf.Max(0f,Context.AudioObject.GetLoopInterval());
+                //if (interval > 0)
+                //{
                     if (InvokeEventAndCheckStopRequest(OnNextLoopStart))
                     {
                         yield break;
                     }
 
                     StartCoroutine(IntervalCoroutine(interval));
-                }
+                //}
+                //else //restart the clip
             }
         }
 
@@ -127,7 +143,8 @@ namespace NeatWolf.Audio
                 yield break;
             }
 
-            yield return new WaitForSeconds(interval);
+            if (interval > 0f)
+                yield return new WaitForSeconds(interval);
 
             if (InvokeEventAndCheckStopRequest(OnIntervalEnd))
             {
@@ -139,7 +156,8 @@ namespace NeatWolf.Audio
                 Context.Position = Context.TargetTransform.position;
             }
 
-            Play(Context);
+            if (interval > 0f)
+                Play(Context);
         }
 
         protected virtual void UpdateContext(AudioObject audioObject, Vector3 position, Transform transform, ClipSettings clipSettings, bool followTransform)

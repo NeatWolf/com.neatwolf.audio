@@ -15,6 +15,7 @@ namespace NeatWolf.Audio
 
         private AudioPlayer _audioPlayer;
         [SerializeField] private AudioVolumeShape previousShape;
+        [SerializeField] private AudioObject previousAudioObject;
 
         public AudioVolumeShape Shape
         {
@@ -31,8 +32,11 @@ namespace NeatWolf.Audio
             get => audioObject;
             set
             {
-                audioObject = value;
-                OnAudioObjectChanged();
+                if (audioObject != value)
+                {
+                    audioObject = value;
+                    OnAudioObjectChanged();
+                }
             }
         }
 
@@ -45,32 +49,95 @@ namespace NeatWolf.Audio
         private void Awake()
         {
             previousShape = shape;
-            OnAudioObjectChanged();
+            previousAudioObject = audioObject;
+            Play();
         }
 
         private void Update()
         {
+            if(transform.rotation != Quaternion.identity)
+            {
+                Debug.LogWarning(this.name + ": AudioVolume does not support rotation at the moment. Resetting rotation to identity.");
+                transform.rotation = Quaternion.identity;
+#if UNITY_EDITOR
+                EditorUtility.SetDirty(this);
+#endif
+            }
+
             if (!Application.isPlaying || _audioPlayer == null || shape == null || shapeData == null)
                 return;
 
-            var listenerPos = AudioVolumeListener.Instance.transform.position;
-            var distanceToEdge = Vector3.Distance(shape.GetClosestPoint(listenerPos, shapeData), listenerPos);
-
-            if (shape.IsInside(listenerPos, shapeData))
+            float blendFactor = GetBlendFactor();
+            //_audioPlayer.SpatialBlendMultiplier = blendFactor;
+            _audioPlayer.UpdateSpatialBlend(blendFactor);
+            _audioPlayer.UpdateSpread(Mathf.Lerp(360f,0f,blendFactor));
+            if(blendFactor > 0) 
             {
-                _audioPlayer.SpatialBlendMultiplier = 0f;
+                _audioPlayer.transform.position = GetWorldClosestPoint(AudioVolumeListener.Instance.transform.position );
+            }
+        }
+        
+        private Vector3 GetWorldClosestPoint(Vector3 worldPosition)
+        {
+            Vector3 localPosition = worldPosition - transform.position;
+            Vector3 localClosestPoint = shape.GetClosestPoint(localPosition, shapeData);
+            return transform.position + localClosestPoint;
+        }
+
+        private float GetBlendFactor()
+        {
+            var listenerPos = AudioVolumeListener.Instance.transform.position;
+            var localListenerPos = listenerPos - transform.position;
+
+            if (shape.IsInside(localListenerPos, shapeData))
+            {
+                return 0f;
             }
             else
             {
-                _audioPlayer.SpatialBlendMultiplier = Mathf.Clamp01(distanceToEdge / featherZone);
-                _audioPlayer.transform.position = shape.GetClosestPoint(listenerPos, shapeData);
+                var localClosestPoint = shape.GetClosestPoint(localListenerPos, shapeData);
+                var worldClosestPoint = localClosestPoint + transform.position;
+                var distanceToEdge = Vector3.Distance(worldClosestPoint, listenerPos);
+
+                return Mathf.Clamp01(distanceToEdge / featherZone);
             }
         }
 
+
+
         private void OnDrawGizmos()
         {
-            if (shape != null && shapeData != null) Shape.DrawGizmo(transform, shapeData);
+            if (shape != null && shapeData != null) 
+            {
+                shape.DrawGizmo(transform, shapeData);
+                DrawDebugLine();
+            }
         }
+
+        private void DrawDebugLine()
+        {
+            if (!Application.isPlaying || AudioVolumeListener.Instance == null || _audioPlayer == null)
+            {
+                return;
+            }
+
+            Vector3 listenerPos = AudioVolumeListener.Instance.transform.position;
+            Vector3 playerPos = _audioPlayer.transform.position;
+
+            // Calculate the lerp value based on the position of the listener relative to the shape.
+            float lerpValue = GetBlendFactor();
+
+            // Lerp colors and alpha based on the lerp value.
+            Color startColor = Color.green;
+            Color endColor = new Color(1, 0, 0, 0.33f);
+            Color color = Color.Lerp(startColor, endColor, lerpValue);
+
+            // Draw the debug line.
+            Debug.DrawLine(listenerPos, playerPos, color);
+        }
+
+
+
 
         private void OnDrawGizmosSelected()
         {
@@ -84,10 +151,20 @@ namespace NeatWolf.Audio
                 Shape = shape;
                 previousShape = shape;
             }
-            OnAudioObjectChanged();
+
+            if (audioObject != previousAudioObject)
+            {
+                AudioObject = audioObject;
+                previousAudioObject = audioObject;
+            }
         }
 
         private void OnAudioObjectChanged()
+        {
+            // This can be used to fire off other events in the future.
+        }
+
+        private void Play()
         {
             if (!Application.isPlaying)
                 return;
@@ -113,15 +190,13 @@ namespace NeatWolf.Audio
             var audioVolume = (AudioVolume)target;
             if (audioVolume.Shape != null && audioVolume.shapeData != null)
             {
-                EditorGUI.BeginChangeCheck(); // Start change check
+                EditorGUI.BeginChangeCheck();
                 Undo.RecordObject(audioVolume, "Modified shapeData");
                 audioVolume.Shape.DrawHandles(audioVolume.transform, ref audioVolume.shapeData);
 
-                if (EditorGUI.EndChangeCheck()) // If changes were detected
+                if (EditorGUI.EndChangeCheck())
                 {
-                    //Undo.RecordObject(audioVolume, "Modified AudioVolume shape"); // Register Undo
-                    //Debug.Log("Recording Undo");
-                    EditorUtility.SetDirty(audioVolume); // Mark object as dirty
+                    EditorUtility.SetDirty(audioVolume);
                 }
             }
         }

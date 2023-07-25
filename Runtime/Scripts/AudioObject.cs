@@ -160,7 +160,17 @@ namespace NeatWolf.Audio
             set => intervalRange = value;
         }
 
-        public float GetInterval()
+        public bool ZeroLoopInterval()
+        {
+            return Math.Abs(intervalRange.x) < 0.001f && Math.Abs(intervalRange.y) < 0.001f;
+        }
+
+        public float GetLoopIntervalRange()
+        {
+            return Mathf.Max(0f, Mathf.Abs(intervalRange.y - intervalRange.x));
+        }
+        
+        public float GetLoopInterval()
         {
             return Random.Range(intervalRange.x, intervalRange.y);
         }

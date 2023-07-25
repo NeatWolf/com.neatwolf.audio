@@ -47,7 +47,7 @@ namespace NeatWolf.Audio
 
         protected virtual void OnIntervalEnd(AudioPlayerContext context)
         {
-            if (context.AudioObject.Looping)
+            if (context.AudioObject.Looping && !context.AudioObject.ZeroLoopInterval())
             {
                 context.AudioPlayer.Play(context);
             }

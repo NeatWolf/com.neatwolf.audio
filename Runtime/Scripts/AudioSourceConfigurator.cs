@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace NeatWolf.Audio
 {
@@ -13,6 +14,7 @@ namespace NeatWolf.Audio
         public float PanStereo;
         public float Time;
         public float Duration;
+        public AudioMixerGroup MixerGroup;
     }
 
     /// <summary>
@@ -50,9 +52,17 @@ namespace NeatWolf.Audio
             // Spatial blend
             float spatialBlend = audioObject.SpatialBlend;
             source.spatialBlend = spatialBlend;
+            
+            // Looping 
+            bool looping = audioObject.ZeroLoopInterval();
+            source.loop = looping;
 
             // Assign PanStereo to AudioSource
             source.panStereo = clipSettings.PanStereo;
+            
+            // Assign Channel to AudioSource if it exists in the AudioObject
+            if (audioObject.AudioChannel != null)
+                source.outputAudioMixerGroup = audioObject.AudioChannel.ResolveMixerGroup();
 
             source.playOnAwake = false;
 
@@ -79,7 +89,8 @@ namespace NeatWolf.Audio
                 Pitch = pitch,
                 PanStereo = source.panStereo,
                 Time = time,
-                Duration = duration
+                Duration = duration,
+                MixerGroup = source.outputAudioMixerGroup
             };
         }
     }
