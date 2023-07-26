@@ -1,3 +1,7 @@
+//using NeatWolf.Spatial.Partitioning;
+
+using System;
+using NeatWolf.Spatial.Partitioning;
 using UnityEngine;
 using UnityEngine.Pool;
 
@@ -10,10 +14,16 @@ namespace NeatWolf.Audio
     public class AudioManager : MonoBehaviour
     {
         [SerializeField] private GameObject audioPlayerPrefab; // Assign this in the inspector
+        [SerializeField] private LayerMask occlusionLayerMask; // Define the occlusion layer mask.
+        [SerializeField] private float occlusionFactor = 0.5f; // The factor by which to reduce volume if LOS is blocked.
+        [field: SerializeField] public float OcclusionSmoothTime { get; } = 0.1f;
 
         private static AudioManager instance;
         private static bool hasAwoken = false;
         private static bool hasStarted = false;
+
+        [field: NonSerialized]
+        public Octree<AudioVolumePortal> PortalsTree { get; private set; }
 
         /// <summary>
         /// Singleton instance of the AudioManager.
@@ -65,6 +75,10 @@ namespace NeatWolf.Audio
             
             // Initialize the pool
             _audioPlayerPool = new ObjectPool<GameObject>(() => Instantiate(audioPlayerPrefab));
+            // Initialize the Octree with some sensible default values.
+            // This would depend on the size of your scene and the number of portals.
+            PortalsTree = new Octree<AudioVolumePortal>(Vector3.zero, new Vector3(500, 500, 500), 5, 1, 10);
+            
             hasAwoken = true;
         }
 
@@ -73,6 +87,36 @@ namespace NeatWolf.Audio
             // Add additional initialization code here if needed
             hasStarted = true;
         }
+        
+        public float GetOcclusionFactor(Vector3 sourcePosition, Vector3 targetPosition)
+        {
+            if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask))
+            {
+                return occlusionFactor;
+            }
+            else
+            {
+                return 1f;
+            }
+        }
+
+        /// <summary>
+        /// Calculates and returns the volume multiplier for an AudioPlayer, based on occlusion.
+        /// </summary>
+        /// <param name="audioPlayer">The AudioPlayer for which to calculate the volume multiplier.</param>
+        /// <returns>The volume multiplier based on occlusion.</returns>
+        /*public float GetVolumeMultiplier(AudioPlayer audioPlayer)
+        {
+            // If the line of sight from the AudioVolumeListener to the AudioPlayer is blocked, reduce the volume by the occlusion factor.
+            if (Physics.Linecast(AudioVolumeListener.Instance.transform.position, audioPlayer.transform.position, occlusionLayerMask))
+            {
+                return Mathf.Lerp(audioPlayer.Volume, audioPlayer.Volume * occlusionFactor, occlusionSmoothTime);
+            }
+            else
+            {
+                return audioPlayer.Volume;
+            }
+        }*/
 
         /// <summary>
         /// Play an AudioObject.
@@ -102,9 +146,10 @@ namespace NeatWolf.Audio
                 Debug.LogError("Failed to get AudioPlayer from pool in AudioManager.");
                 return null;
             }
-            
+
             // Ensure the fetched object has an AudioPlayer component
             AudioPlayer audioPlayer = audioPlayerGameObject.GetComponent<AudioPlayer>();
+
             if (audioPlayer == null)
             {
                 Debug.LogError("Fetched object from pool in AudioManager does not have an AudioPlayer component.");
@@ -130,5 +175,33 @@ namespace NeatWolf.Audio
 
             return audioPlayer;
         }
+
+        /*/// <summary>
+        /// Add an AudioVolumePortal to the Octree.
+        /// </summary>
+        /// <param name="portal">The AudioVolumePortal to add.</param>
+        public void RegisterAudioVolumePortal(AudioVolumePortal portal)
+        {
+            audioVolumePortalOctree.Insert(new OctreeNode<AudioVolumePortal>(portal, portal.transform.position));
+        }
+
+        /// <summary>
+        /// Remove an AudioVolumePortal from the Octree.
+        /// </summary>
+        /// <param name="portal">The AudioVolumePortal to remove.</param>
+        public void DeregisterAudioVolumePortal(AudioVolumePortal portal)
+        {
+            audioVolumePortalOctree.Remove(portal.transform.position);
+        }
+
+        /// <summary>
+        /// Finds and returns the AudioVolumePortal closest to a given position.
+        /// </summary>
+        /// <param name="position">The position for which to find the closest AudioVolumePortal.</param>
+        /// <returns>The closest AudioVolumePortal to the position, or null if none exist.</returns>
+        public AudioVolumePortal FindClosestAudioVolumePortal(Vector3 position)
+        {
+            return audioVolumePortalOctree.FindNearestNode(position)?.Data;
+        }*/
     }
 }

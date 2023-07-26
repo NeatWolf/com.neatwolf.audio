@@ -73,7 +73,29 @@ namespace NeatWolf.Audio
             _audioPlayer.UpdateSpread(Mathf.Lerp(360f,0f,blendFactor));
             if(blendFactor > 0) 
             {
-                _audioPlayer.transform.position = GetWorldClosestPoint(AudioVolumeListener.Instance.transform.position );
+                var worldClosestPoint = GetWorldClosestPoint(AudioVolumeListener.Instance.transform.position );
+                
+                // Find the closest portal to the worldClosestPoint
+                var closestPortal = AudioManager.Instance.PortalsTree.FindNearestNode(worldClosestPoint);
+                Vector3 soundSourcePosition;
+                
+
+                if (closestPortal != null && closestPortal.Enabled)
+                {
+                    // If there's an enabled portal close to the worldClosestPoint, snap the sound to the portal position.
+                    soundSourcePosition = closestPortal.Position;
+                }
+                else
+                {
+                    // Otherwise, proceed as before.
+                    soundSourcePosition = worldClosestPoint;
+                }
+
+                _audioPlayer.transform.position = soundSourcePosition;
+                
+                // Get the occlusion factor and apply it to the volume.
+                float occlusionFactor = AudioManager.Instance.GetOcclusionFactor(AudioVolumeListener.Instance.transform.position, soundSourcePosition);
+                _audioPlayer.targetVolumeMultiplier = occlusionFactor;
             }
         }
         

@@ -25,6 +25,12 @@ namespace NeatWolf.Audio
     {
         public AudioPlayerContext Context { get; private set; }
 
+        public float Volume { get; set; } = 1f; // Default to max volume.
+
+        internal float targetVolumeMultiplier = 1f; // The volume we want to reach.
+        private float currentVolumeMultiplier = 1f; // The volume we're currently at.
+        private float volumeVelocity = 0f; // A variable used by Mathf.SmoothDamp.
+        
         [SerializeField]
         private AudioSourceConfigurator _configurator;
 
@@ -81,16 +87,20 @@ namespace NeatWolf.Audio
 
 
             AudioSourceSettings settings = _configurator.Configure(_audioSource, Context.AudioObject, Context.ClipSettings);
+            Volume = _audioSource.volume;
 
-            if (UseSpatialBlendPlayerMultiplier)
-                _audioSource.spatialBlend *= SpatialBlendMultiplier;
+            //if (UseSpatialBlendPlayerMultiplier)
+            //    _audioSource.spatialBlend *= SpatialBlendMultiplier;
 
             if (settings.AudioClip == null || _audioSource.outputAudioMixerGroup == null)
             {
                 return;
             }
 
+            
             _audioSource.Play();
+            targetVolumeMultiplier = 1f;
+            currentVolumeMultiplier = 1f;
 
             if (InvokeEventAndCheckStopRequest(OnClipBeginPlaying))
             {
@@ -99,7 +109,22 @@ namespace NeatWolf.Audio
 
             StartCoroutine(StopAtEndPositionCoroutine(settings.Duration));
         }
+        
+        private void Update()
+        {
+            // Gradually adjust the current volume to match the target volume.
+            currentVolumeMultiplier = Mathf.SmoothDamp(currentVolumeMultiplier, targetVolumeMultiplier, ref volumeVelocity, AudioManager.Instance.OcclusionSmoothTime);
 
+            // Apply the current volume to the audio source.
+            UpdateVolume();
+        }
+        
+
+        public virtual void UpdateVolume()
+        {
+            _audioSource.volume = Volume * currentVolumeMultiplier;
+        }
+        
         public virtual void UpdateSpatialBlend(float overrideValue)
         {
             //if (UseSpatialBlendPlayerMultiplier)
