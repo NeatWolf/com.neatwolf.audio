@@ -1,5 +1,3 @@
-//using NeatWolf.Spatial.Partitioning;
-
 using System;
 using NeatWolf.Spatial.Partitioning;
 using UnityEngine;
@@ -8,28 +6,38 @@ using UnityEngine.Pool;
 namespace NeatWolf.Audio
 {
     /// <summary>
-    /// AudioManager is responsible for managing the playback of AudioObjects. 
-    /// It fetches an instance of AudioPlayer from a pool, configures it according to the AudioObject's settings, and initiates the audio playback.
+    ///     AudioManager is responsible for managing the playback of AudioObjects.
+    ///     It fetches an instance of AudioPlayer from a pool, configures it according to the AudioObject's settings, and
+    ///     initiates the audio playback.
     /// </summary>
     public class AudioManager : MonoBehaviour
     {
+        private static AudioManager instance;
+        private static bool hasAwoken;
+        private static bool hasStarted;
         [SerializeField] private GameObject audioPlayerPrefab; // Assign this in the inspector
         [SerializeField] private LayerMask occlusionLayerMask; // Define the occlusion layer mask.
-        [SerializeField] private float occlusionFactor = 0.5f; // The factor by which to reduce volume if LOS is blocked.
-        [field: SerializeField] public float OcclusionSmoothTime { get; } = 0.1f;
 
-        private static AudioManager instance;
-        private static bool hasAwoken = false;
-        private static bool hasStarted = false;
+        [SerializeField]
+        private float occlusionFactor = 0.5f; // The factor by which to reduce volume if LOS is blocked.
 
-        [field: NonSerialized]
-        public Octree<AudioVolumePortal> PortalsTree { get; private set; }
+        [SerializeField] private float occlusionSmoothTime = 0.1f;
+
+        private ObjectPool<GameObject> _audioPlayerPool;
+
+        public float OcclusionSmoothTime
+        {
+            get => occlusionSmoothTime;
+            set => occlusionSmoothTime = value;
+        }
+
+        [field: NonSerialized] public Octree<AudioVolumePortal> PortalsTree { get; private set; }
 
         /// <summary>
-        /// Singleton instance of the AudioManager.
+        ///     Singleton instance of the AudioManager.
         /// </summary>
-        public static AudioManager Instance 
-        { 
+        public static AudioManager Instance
+        {
             get
             {
                 if (instance == null)
@@ -43,15 +51,9 @@ namespace NeatWolf.Audio
                     else
                     {
                         // Initialize if needed
-                        if (!hasAwoken)
-                        {
-                            instance.Awake();
-                        }
+                        if (!hasAwoken) instance.Awake();
 
-                        if (!hasStarted)
-                        {
-                            instance.Start();
-                        }
+                        if (!hasStarted) instance.Start();
                     }
                 }
 
@@ -59,26 +61,24 @@ namespace NeatWolf.Audio
             }
         }
 
-        private ObjectPool<GameObject> _audioPlayerPool;
-
         private void Awake()
         {
             // Check for duplicates
             if (instance != null && instance != this)
             {
                 Debug.LogError("More than one AudioManager instance detected. Destroying duplicate.");
-                Destroy(this.gameObject);
+                Destroy(gameObject);
                 return;
             }
 
             instance = this;
-            
+
             // Initialize the pool
             _audioPlayerPool = new ObjectPool<GameObject>(() => Instantiate(audioPlayerPrefab));
             // Initialize the Octree with some sensible default values.
             // This would depend on the size of your scene and the number of portals.
             PortalsTree = new Octree<AudioVolumePortal>(Vector3.zero, new Vector3(500, 500, 500), 5, 1, 10);
-            
+
             hasAwoken = true;
         }
 
@@ -87,17 +87,13 @@ namespace NeatWolf.Audio
             // Add additional initialization code here if needed
             hasStarted = true;
         }
-        
-        public float GetOcclusionFactor(Vector3 sourcePosition, Vector3 targetPosition)
+
+        public float GetOcclusionFactor(Vector3 volumeCentre, Vector3 sourcePosition, Vector3 targetPosition)
         {
-            if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask))
-            {
+            if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask)
+                || Physics.Linecast(volumeCentre, targetPosition, occlusionLayerMask))
                 return occlusionFactor;
-            }
-            else
-            {
-                return 1f;
-            }
+            return 1f;
         }
 
         /// <summary>
@@ -119,14 +115,17 @@ namespace NeatWolf.Audio
         }*/
 
         /// <summary>
-        /// Play an AudioObject.
-        /// If RepositionToTarget is true, it uses the targetTransform's position, otherwise it uses audioPosition. 
-        /// If ParentToTarget is true, the AudioPlayer becomes a child of targetTransform. 
-        /// The method returns the instance of AudioPlayer that's playing the AudioObject.
+        ///     Play an AudioObject.
+        ///     If RepositionToTarget is true, it uses the targetTransform's position, otherwise it uses audioPosition.
+        ///     If ParentToTarget is true, the AudioPlayer becomes a child of targetTransform.
+        ///     The method returns the instance of AudioPlayer that's playing the AudioObject.
         /// </summary>
         /// <param name="audioObject">The AudioObject to be played.</param>
         /// <param name="audioPosition">The position at which to play the AudioObject if RepositionToTarget is false.</param>
-        /// <param name="targetTransform">The Transform at which to play the AudioObject and/or parent the AudioPlayer to if RepositionToTarget and/or ParentToTarget is true. Can be null.</param>
+        /// <param name="targetTransform">
+        ///     The Transform at which to play the AudioObject and/or parent the AudioPlayer to if
+        ///     RepositionToTarget and/or ParentToTarget is true. Can be null.
+        /// </param>
         /// <returns>The AudioPlayer that's playing the AudioObject.</returns>
         public AudioPlayer Play(AudioObject audioObject, Vector3 audioPosition, Transform targetTransform = null)
         {
@@ -138,7 +137,7 @@ namespace NeatWolf.Audio
             }
 
             // Fetch an AudioPlayer from the pool
-            GameObject audioPlayerGameObject = _audioPlayerPool.Get();
+            var audioPlayerGameObject = _audioPlayerPool.Get();
 
             // Ensure the pool has available instances
             if (audioPlayerGameObject == null)
@@ -148,7 +147,7 @@ namespace NeatWolf.Audio
             }
 
             // Ensure the fetched object has an AudioPlayer component
-            AudioPlayer audioPlayer = audioPlayerGameObject.GetComponent<AudioPlayer>();
+            var audioPlayer = audioPlayerGameObject.GetComponent<AudioPlayer>();
 
             if (audioPlayer == null)
             {
@@ -157,18 +156,20 @@ namespace NeatWolf.Audio
             }
 
             // Create a context for the AudioPlayer
-            AudioPlayerContext context = new AudioPlayerContext
+            var context = new AudioPlayerContext
             {
                 AudioPlayer = audioPlayer,
                 AudioObject = audioObject,
-                Position = audioObject.RepositionToTarget && targetTransform != null ? targetTransform.position : audioPosition,
+                Position = audioObject.RepositionToTarget && targetTransform != null
+                    ? targetTransform.position
+                    : audioPosition,
                 TargetTransform = audioObject.RepositionToTarget ? targetTransform : null,
                 ClipSettings = null, // Set the clip settings here if necessary
                 ParentToTarget = audioObject.ParentToTransform
             };
 
             // Parent the AudioPlayer to targetTransform if ParentToTarget is true
-            audioPlayer.transform.SetParent(context.ParentToTarget? context.TargetTransform: null);
+            audioPlayer.transform.SetParent(context.ParentToTarget ? context.TargetTransform : null);
 
             // Play the audio
             audioPlayer.Play(context);
