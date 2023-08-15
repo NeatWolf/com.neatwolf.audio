@@ -17,8 +17,8 @@ namespace NeatWolf.Audio
     public class ClipSettings
     {
         [SerializeField] private AudioClip audioClip;
-        [SerializeField] private float volume;
-        [SerializeField] private float pitch;
+        [SerializeField] private float volume = 1f;
+        [SerializeField] private float pitch = 1f;
         [SerializeField] private float panStereo;
         [SerializeField] private float startPosition;
         [SerializeField] private float endPosition;
