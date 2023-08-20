@@ -88,8 +88,16 @@ namespace NeatWolf.Audio
             hasStarted = true;
         }
 
-        public float GetOcclusionFactor(Vector3 volumeCentre, Vector3 sourcePosition, Vector3 targetPosition)
+        public float GetOccludedVolumeFactor(Vector3 volumeCentre, Vector3 sourcePosition, Vector3 targetPosition, bool invertedVolume=false)
         {
+            if (invertedVolume)
+            {
+                // no extra check towards volume centre if using inverted volume logic
+                if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask))
+                    return occlusionFactor;
+                return 1f;
+            }
+
             if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask)
                 || Physics.Linecast(volumeCentre, targetPosition, occlusionLayerMask))
                 return occlusionFactor;
@@ -177,15 +185,16 @@ namespace NeatWolf.Audio
             return audioPlayer;
         }
 
-        /*/// <summary>
+        /// <summary>
         /// Add an AudioVolumePortal to the Octree.
         /// </summary>
         /// <param name="portal">The AudioVolumePortal to add.</param>
-        public void RegisterAudioVolumePortal(AudioVolumePortal portal)
+        public static void RegisterAudioVolumePortal(AudioVolumePortal portal)
         {
-            audioVolumePortalOctree.Insert(new OctreeNode<AudioVolumePortal>(portal, portal.transform.position));
+            Instance.PortalsTree.Insert(new OctreeNode<AudioVolumePortal>(portal, portal.transform.position));
         }
 
+        /*
         /// <summary>
         /// Remove an AudioVolumePortal from the Octree.
         /// </summary>

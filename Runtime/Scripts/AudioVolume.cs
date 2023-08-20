@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using NeatWolf.Spatial.Partitioning;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -25,6 +26,7 @@ namespace NeatWolf.Audio
         [SerializeReference] [SerializeField] internal AudioVolumeShape.ShapeData shapeData;
         [SerializeField] private AudioObject audioObject;
         [SerializeField] private float featherZone;
+        [SerializeField] private bool isInverted = false;
         [SerializeField] private GameObject audioFiltersOcclusionDummy;
         [SerializeField] private GameObject audioFiltersBlendDummy;
         [HideInInspector] [SerializeField] private AudioVolumeShape previousShape;
@@ -74,6 +76,93 @@ namespace NeatWolf.Audio
 
         private void Update()
         {
+            EnsureNoRotation();
+            
+            if (InvalidComponents())
+                return;
+            
+            ApplyCommonAudioPlayerUpdates();
+        }
+
+        private void ApplyCommonAudioPlayerUpdates()
+        {
+            var blendFactor = GetBlendFactor(isInverted);
+            float occlusionVolumeMultiplier;
+
+            Vector3 listenerPos = AudioVolumeListener.Instance.transform.position;
+            Vector3 soundSourcePosition = GetClosestAudioPosition(listenerPos, out _);
+
+            // Get the occlusion factor and apply it to the volume.
+            var occlusionVolumeFactor  =
+                AudioManager.Instance.GetOccludedVolumeFactor(transform.position,
+                    listenerPos,
+                    soundSourcePosition,
+                    isInverted);
+            // Volume is not inverted and player is inside
+            // OR
+            // Volume is inverted and player is outside
+            if (!isInverted == shape.IsInside(listenerPos, shapeData))
+                occlusionVolumeMultiplier = occlusionVolumeFactor;
+            else
+                occlusionVolumeMultiplier = 1f;
+            //if (isInverted)
+            //    HandleInvertedVolume(blendFactor, listenerPos, closestAudioPosition, out occlusionVolumeMultiplier);
+            //else
+            //    HandleStandardVolume(blendFactor, listenerPos, closestAudioPosition, out occlusionVolumeMultiplier);
+            
+            _audioPlayer.UpdateSpatialBlend(blendFactor);
+            _audioPlayer.UpdateSpread(Mathf.Lerp(360f, 0f, blendFactor));
+            _audioPlayer.transform.position = soundSourcePosition;
+            
+
+            //_audioPlayer.targetVolumeMultiplier = (1-blendFactor) * occlusionVolumeMultiplier;
+            _audioPlayer.targetVolumeMultiplier = occlusionVolumeMultiplier;
+        }
+
+        private void EnsureNoRotation()
+        {
+            if (transform.rotation != Quaternion.identity)
+            {
+                Debug.LogWarning(name +
+                                 ": AudioVolume does not support rotation at the moment. Resetting rotation to identity.");
+                transform.rotation = Quaternion.identity;
+#if UNITY_EDITOR
+                EditorUtility.SetDirty(this);
+#endif
+            }
+        }
+        
+        private bool InvalidComponents()
+        {
+            return (!Application.isPlaying || _audioPlayer == null || shape == null || shapeData == null);
+        }
+        
+        private Vector3 GetClosestAudioPosition(Vector3 listenerPos, out OctreeNode<AudioVolumePortal> foundPortal)
+        {
+            Vector3 soundSourcePosition;
+            
+            var worldClosestPoint = GetWorldClosestPoint(listenerPos);
+            // Find the closest portal to the worldClosestPoint
+            var closestPortal = AudioManager.Instance.PortalsTree.FindNearestEnabledNode(worldClosestPoint);
+            foundPortal = closestPortal;
+
+            if (foundPortal != null)
+                soundSourcePosition = closestPortal.Position;
+            else
+                soundSourcePosition = worldClosestPoint;
+
+            return soundSourcePosition;
+        }
+        
+        protected virtual void ApplyAllEffects(float blendFactor, float occlusionFactor)
+        {
+            foreach (var behaviour in _audioPlayer.GetComponents<Behaviour>())
+                if (IsAudioFilter(behaviour))
+                    ApplyEffects(behaviour, blendFactor, occlusionFactor);
+        }
+
+        private void Update2()
+        {
             if (transform.rotation != Quaternion.identity)
             {
                 Debug.LogWarning(name +
@@ -111,7 +200,7 @@ namespace NeatWolf.Audio
 
                 // Get the occlusion factor and apply it to the volume.
                 var occlusionFactor =
-                    AudioManager.Instance.GetOcclusionFactor(transform.position,
+                    AudioManager.Instance.GetOccludedVolumeFactor(transform.position,
                         AudioVolumeListener.Instance.transform.position,
                         soundSourcePosition);
                 _audioPlayer.targetVolumeMultiplier = occlusionFactor;
@@ -205,14 +294,6 @@ namespace NeatWolf.Audio
             return copy;
         }
 
-        protected virtual void ApplyAllEffects(float blendFactor, float occlusionFactor)
-        {
-            foreach (var behaviour in _audioPlayer.GetComponents<Behaviour>())
-                if (IsAudioFilter(behaviour))
-                    ApplyEffects(behaviour, blendFactor, occlusionFactor);
-        }
-
-
         private void ApplyEffects(Behaviour filter, float blendFactor, float occlusionFactor)
         {
             var sumFactor = Mathf.Clamp01(blendFactor + occlusionFactor);
@@ -271,12 +352,14 @@ namespace NeatWolf.Audio
             return transform.position + localClosestPoint;
         }
 
-        private float GetBlendFactor()
+        private float GetBlendFactor(bool invertVolume=false)
         {
             var listenerPos = AudioVolumeListener.Instance.transform.position;
             var localListenerPos = listenerPos - transform.position;
 
-            if (shape.IsInside(localListenerPos, shapeData))
+            // if the volume is not inverted, the shape must be inside.
+            // And viceversa.
+            if (!invertVolume == shape.IsInside(localListenerPos, shapeData))
             {
                 return 0f;
             }
@@ -296,7 +379,7 @@ namespace NeatWolf.Audio
             var playerPos = _audioPlayer.transform.position;
 
             // Calculate the lerp value based on the position of the listener relative to the shape.
-            var lerpValue = GetBlendFactor();
+            var lerpValue = GetBlendFactor(isInverted);
 
             // Lerp colors and alpha based on the lerp value.
             var startColor = Color.green;
