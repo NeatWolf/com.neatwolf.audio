@@ -1,4 +1,6 @@
+#nullable enable
 using System;
+using System.Collections.Generic;
 using NeatWolf.Spatial.Partitioning;
 using UnityEngine;
 using UnityEngine.Pool;
@@ -9,6 +11,7 @@ namespace NeatWolf.Audio
     ///     AudioManager is responsible for managing the playback of AudioObjects.
     ///     It fetches an instance of AudioPlayer from a pool, configures it according to the AudioObject's settings, and
     ///     initiates the audio playback.
+    ///     It also manages the registration of AudioVolumePortals and their assignment to different AudioVolumePortalGroups.
     /// </summary>
     public class AudioManager : MonoBehaviour
     {
@@ -31,8 +34,28 @@ namespace NeatWolf.Audio
             set => occlusionSmoothTime = value;
         }
 
-        [field: NonSerialized] public Octree<AudioVolumePortal> PortalsTree { get; private set; }
+        // Replaced the single Octree with a dictionary of Octrees, one for each AudioVolumePortalGroup.
+        /// <summary>
+        ///     A dictionary that maps each AudioVolumePortalGroup to an Octree of AudioVolumePortals.
+        ///     This allows for efficient spatial queries for portals within a specific group.
+        /// </summary>
+        [field: NonSerialized]
+        private Dictionary<AudioVolumePortalGroup, Octree<AudioVolumePortal>> portals = new();
 
+        public Octree<AudioVolumePortal> GetPortals(AudioVolumePortalGroup key)
+        {
+            if (key == null)
+            {
+                // Handle null key access
+                key = AudioVolumePortalGroup.DEFAULT;
+            }
+
+            // Initialize new Octree<AudioVolumePortal> and add it to the dictionary
+            portals.TryAdd(key, new Octree<AudioVolumePortal>(Vector3.zero, new Vector3(500, 500, 500), 5, 1, 10));
+
+            return portals[key];
+        }
+        
         /// <summary>
         ///     Singleton instance of the AudioManager.
         /// </summary>
@@ -63,6 +86,10 @@ namespace NeatWolf.Audio
 
         private void Awake()
         {
+            if (hasAwoken)
+                return;
+            AudioVolumePortalGroup.DEFAULT = ScriptableObject.CreateInstance<AudioVolumePortalGroup>();
+            
             // Check for duplicates
             if (instance != null && instance != this)
             {
@@ -75,31 +102,48 @@ namespace NeatWolf.Audio
 
             // Initialize the pool
             _audioPlayerPool = new ObjectPool<GameObject>(() => Instantiate(audioPlayerPrefab));
-            // Initialize the Octree with some sensible default values.
+            // Initialize the dictionary
             // This would depend on the size of your scene and the number of portals.
-            PortalsTree = new Octree<AudioVolumePortal>(Vector3.zero, new Vector3(500, 500, 500), 5, 1, 10);
-
+            // The default group is null. null! suppresses the warning
+            // Using null with the "!" is a way to bypass the compiler's null-safety checks.
+            //Portals = new Dictionary<AudioVolumePortalGroup, Octree<AudioVolumePortal>>();
+            // Initialize the Octree for the default group
+            //Portals[AudioVolumePortalGroup.DEFAULT] = new Octree<AudioVolumePortal>(Vector3.zero, new Vector3(500, 500, 500), 5, 1, 10);
+            GetPortals(AudioVolumePortalGroup.DEFAULT);
+            
             hasAwoken = true;
         }
 
         private void Start()
         {
+            if (hasStarted)
+                return;
+            
             // Add additional initialization code here if needed
             hasStarted = true;
         }
 
-        public float GetOccludedVolumeFactor(Vector3 volumeCentre, Vector3 sourcePosition, Vector3 targetPosition, bool invertedVolume=false)
+        public float GetOccludedVolumeFactor(Vector3 volumeCentre, Vector3 shapeClosestPosition, Vector3 closestAudioPosition, Vector3 listenerPosition,
+            bool invertedVolume = false)
         {
             if (invertedVolume)
             {
                 // no extra check towards volume centre if using inverted volume logic
-                if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask))
+                //if (Physics.Linecast(closestAudioPosition, listenerPosition, occlusionLayerMask))
+                //    return occlusionFactor;
+
+                if (Physics.CheckSphere(closestAudioPosition, 0.25f, occlusionLayerMask))
                     return occlusionFactor;
                 return 1f;
             }
 
-            if (Physics.Linecast(sourcePosition, targetPosition, occlusionLayerMask)
-                || Physics.Linecast(volumeCentre, targetPosition, occlusionLayerMask))
+            // handle occluded portals
+            if (Physics.CheckSphere(closestAudioPosition, 0.25f, occlusionLayerMask))
+                return occlusionFactor;
+            
+            if (Physics.Linecast(closestAudioPosition, listenerPosition, occlusionLayerMask)
+                || Physics.Linecast(shapeClosestPosition, closestAudioPosition, occlusionLayerMask)
+                || Physics.Linecast(shapeClosestPosition, listenerPosition, occlusionLayerMask))
                 return occlusionFactor;
             return 1f;
         }
@@ -186,12 +230,17 @@ namespace NeatWolf.Audio
         }
 
         /// <summary>
-        /// Add an AudioVolumePortal to the Octree.
+        ///     Register an AudioVolumePortal to the AudioManager.
+        ///     The portal will be added to the Octree of its group.
+        ///     If the group doesn't exist in the dictionary, a new Octree will be created for it.
         /// </summary>
-        /// <param name="portal">The AudioVolumePortal to add.</param>
-        public static void RegisterAudioVolumePortal(AudioVolumePortal portal)
+        /// <param name="portal">The portal to register.</param>
+        /// <param name="nullablePortalGroup">The group the portal belongs to.</param>
+        public static void RegisterAudioVolumePortal(AudioVolumePortal portal,
+            AudioVolumePortalGroup? nullablePortalGroup=null)
         {
-            Instance.PortalsTree.Insert(new OctreeNode<AudioVolumePortal>(portal, portal.transform.position));
+            Octree<AudioVolumePortal> octree = Instance.GetPortals(nullablePortalGroup!);
+            octree.Insert(portal.transform.position, portal);
         }
 
         /*

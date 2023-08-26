@@ -8,6 +8,11 @@ using UnityEditor;
 
 namespace NeatWolf.Audio
 {
+    /// <summary>
+    ///     This class represents a volume of space that modifies the properties of an AudioObject.
+    ///     Each volume can be assigned to a specific AudioVolumePortalGroup.
+    ///     The volume will only affect the sound propagation through the portals of its group.
+    /// </summary>
     [ExecuteAlways]
     public class AudioVolume : MonoBehaviour
     {
@@ -62,6 +67,17 @@ namespace NeatWolf.Audio
             get => featherZone;
             set => featherZone = Mathf.Max(0, value);
         }
+        
+        /// <summary>
+        ///     The group this volume belongs to.
+        ///     If no group is assigned, the volume will belong to the default group (null).
+        /// </summary>
+        [SerializeField] private AudioVolumePortalGroup portalGroup = AudioVolumePortalGroup.DEFAULT;
+        public AudioVolumePortalGroup PortalGroup
+        {
+            get => portalGroup;
+            protected set => portalGroup = value;
+        }
 
         private void Awake()
         {
@@ -90,13 +106,20 @@ namespace NeatWolf.Audio
             float occlusionVolumeMultiplier;
 
             Vector3 listenerPos = AudioVolumeListener.Instance.transform.position;
-            Vector3 soundSourcePosition = GetClosestAudioPosition(listenerPos, out _);
 
+            AudioVolumePortal foundPortal;
+            Vector3 worldClosestPoint;
+            Vector3 soundSourcePosition = GetClosestAudioPosition(listenerPos, blendFactor, out foundPortal, out worldClosestPoint);
+
+            if (foundPortal)
+                blendFactor = GetBlendFactorFromPortal(listenerPos, foundPortal);
+            
             // Get the occlusion factor and apply it to the volume.
             var occlusionVolumeFactor  =
                 AudioManager.Instance.GetOccludedVolumeFactor(transform.position,
-                    listenerPos,
+                    worldClosestPoint,
                     soundSourcePosition,
+                    listenerPos,
                     isInverted);
             // Volume is not inverted and player is inside
             // OR
@@ -117,6 +140,8 @@ namespace NeatWolf.Audio
 
             //_audioPlayer.targetVolumeMultiplier = (1-blendFactor) * occlusionVolumeMultiplier;
             _audioPlayer.targetVolumeMultiplier = occlusionVolumeMultiplier;
+            
+            ApplyAllEffects(blendFactor, 1 - occlusionVolumeFactor);
         }
 
         private void EnsureNoRotation()
@@ -137,17 +162,25 @@ namespace NeatWolf.Audio
             return (!Application.isPlaying || _audioPlayer == null || shape == null || shapeData == null);
         }
         
-        private Vector3 GetClosestAudioPosition(Vector3 listenerPos, out OctreeNode<AudioVolumePortal> foundPortal)
+        private Vector3 GetClosestAudioPosition(Vector3 listenerPos, float blendFactor, out AudioVolumePortal foundPortal, out Vector3 worldClosestPoint)
         {
             Vector3 soundSourcePosition;
             
-            var worldClosestPoint = GetWorldClosestPoint(listenerPos);
-            // Find the closest portal to the worldClosestPoint
-            var closestPortal = AudioManager.Instance.PortalsTree.FindNearestEnabledNode(worldClosestPoint);
-            foundPortal = closestPortal;
+            worldClosestPoint = GetWorldClosestPoint(listenerPos);
+            
+            // if blendFactor == 0 => full power
+            OctreeNode<AudioVolumePortal> closestPortal;
+            if (blendFactor >= 1f || isInverted)
+                // Find the closest portal to the worldClosestPoint
+            {
+                closestPortal = AudioManager.Instance.GetPortals(portalGroup).FindNearestEnabledNode(worldClosestPoint);
+                foundPortal = closestPortal.Data;
+            }
+            else foundPortal = null;
+
 
             if (foundPortal != null)
-                soundSourcePosition = closestPortal.Position;
+                soundSourcePosition = foundPortal.transform.position;
             else
                 soundSourcePosition = worldClosestPoint;
 
@@ -185,7 +218,7 @@ namespace NeatWolf.Audio
                 var worldClosestPoint = GetWorldClosestPoint(AudioVolumeListener.Instance.transform.position);
 
                 // Find the closest portal to the worldClosestPoint
-                var closestPortal = AudioManager.Instance.PortalsTree.FindNearestNode(worldClosestPoint);
+                var closestPortal = AudioManager.Instance.GetPortals(portalGroup).FindNearestNode(worldClosestPoint);
                 Vector3 soundSourcePosition;
 
 
@@ -199,11 +232,11 @@ namespace NeatWolf.Audio
                 _audioPlayer.transform.position = soundSourcePosition;
 
                 // Get the occlusion factor and apply it to the volume.
-                var occlusionFactor =
+                /*var occlusionFactor =
                     AudioManager.Instance.GetOccludedVolumeFactor(transform.position,
                         AudioVolumeListener.Instance.transform.position,
                         soundSourcePosition);
-                _audioPlayer.targetVolumeMultiplier = occlusionFactor;
+                _audioPlayer.targetVolumeMultiplier = occlusionFactor;*/
             }
             else
             {
@@ -299,14 +332,15 @@ namespace NeatWolf.Audio
             var sumFactor = Mathf.Clamp01(blendFactor + occlusionFactor);
             var averageFactor = (blendFactor + occlusionFactor) * 0.5f;
             var multipliedFactor = blendFactor * occlusionFactor;
+            var invMultipliedFactor = (1f - (1f - blendFactor) * (1f - occlusionFactor)); 
 
             switch (filter)
             {
                 case AudioLowPassFilter lowPassFilter:
                     // The cutoff frequency decreases more when both occlusion and distance are high.
-                    lowPassFilter.cutoffFrequency = Mathf.Lerp(22000, 200, multipliedFactor);
+                    lowPassFilter.cutoffFrequency = Mathf.Lerp(22000, 3000, invMultipliedFactor);
                     // Lowpass resonance slightly increases with occlusion, simulating an enclosed space.
-                    lowPassFilter.lowpassResonanceQ = Mathf.Lerp(1, 1.5f, multipliedFactor * 0.5f);
+                    lowPassFilter.lowpassResonanceQ = Mathf.Lerp(1, 1.5f, invMultipliedFactor);
                     break;
                 case AudioHighPassFilter highPassFilter:
                     // The high pass filter should not be applied strongly, or it will choke the sound.
@@ -369,6 +403,16 @@ namespace NeatWolf.Audio
             var distanceToEdge = Vector3.Distance(worldClosestPoint, listenerPos);
 
             return Mathf.Clamp01(distanceToEdge / featherZone);
+        }
+
+        private float GetBlendFactorFromPortal(Vector3 listenerPos, AudioVolumePortal portal)
+        {
+            var distanceFromPortal = Vector3.Distance(portal.transform.position, listenerPos);
+
+            var linearValue = Mathf.Clamp01(distanceFromPortal / featherZone);
+            return
+                Mathf.Lerp(0.5f, 1f, linearValue);
+            //(1f - (1f-linearValue) * (1f-linearValue)); //quadratic, but concentrated near 1
         }
 
         private void DrawDebugLine()
